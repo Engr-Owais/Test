@@ -1,11 +1,11 @@
-import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_app_samples/utility/shrdpref.dart';
-import 'package:flutter_app_samples/widgets/Button.dart';
 import 'package:flutter_app_samples/widgets/appBar.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 Future main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -32,51 +32,53 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  Image image;
+  File _image;
   TextEditingController _nameController;
   TextEditingController _fathername;
   TextEditingController _phnNumber;
   String name = '';
   String fatherName = "";
   String phNum = "";
-  String imageCheck;
+  String imagePath;
+
+  BaseAppBar _appBar = BaseAppBar();
+
+  void saveImage(String path) async {
+    SharedPreferences sharedPreferences = await SharedPreferences.getInstance();
+    sharedPreferences.setString("imagepath", path);
+    print(sharedPreferences.getString("imagepath"));
+    print(path + "Path");
+  }
+
+  void loadImage() async {
+    SharedPreferences sharedPreferences = await SharedPreferences.getInstance();
+    setState(() {
+      imagePath = sharedPreferences.getString("imagepath");
+    });
+  }
 
   pickImage(ImageSource source) async {
     // ignore: deprecated_member_use
-    final _image = await ImagePicker.pickImage(source: source);
+    var image = await ImagePicker.pickImage(source: source);
 
-    if (_image != null) {
+    if (image != null) {
       setState(() {
-        image = Image.file(_image);
+        _image = image;
       });
-      SharedPrefs.saveImageToPrefs(
-          SharedPrefs.base64String(_image.readAsBytesSync()));
+      saveImage(_image.path);
+      loadImage();
     } else {
       print('Error picking image!');
-    }
-  }
-
-  loadImageFromPrefs() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    final imageKeyValue = prefs.getString(IMAGE_KEY);
-    if (imageKeyValue != null) {
-      final imageString = await SharedPrefs.loadImageFromPrefs();
-      setState(() {
-        image = SharedPrefs.imageFrom64BaseString(imageString);
-imageCheck = base64Decode.toString();
-print(image.toString() + "load Image form pref");
-      });
     }
   }
 
   @override
   void initState() {
     super.initState();
+    loadImage();
     name = SharedPrefs.getUsername() ?? '';
     phNum = SharedPrefs.getPhone() ?? '';
     fatherName = SharedPrefs.getFatherName() ?? '';
-    loadImageFromPrefs();
-    print(image);
   }
 
   @override
@@ -87,87 +89,114 @@ print(image.toString() + "load Image form pref");
         title: Text('Profile Screen'),
         appBar: AppBar(),
       ),
-      body: Container(
-        height: size.height,
-        width: size.width,
-        color: Colors.white,
-        child: Column(
-          children: [
-            SizedBox(
-              height: size.height * 0.05,
-            ),
-            Container(
-              width: size.width,
-              height: size.height * 0.2,
-              child: Center(
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 80,
-                      child:
-                          image == null ? Icon(Icons.person, size: 50) : image,
+      body: Builder(
+        builder: (context) => SingleChildScrollView(
+          child: Container(
+            height: size.height -
+                _appBar.preferredSize.height -
+                MediaQuery.of(context).padding.top,
+            width: size.width,
+            color: Colors.white,
+            child: Column(
+              children: [
+                SizedBox(
+                  height: size.height * 0.05,
+                ),
+                Container(
+                  width: size.width,
+                  height: size.height * 0.2,
+                  child: Center(
+                    child: Stack(
+                      children: [
+                        imagePath != null
+                            ? CircleAvatar(
+                                radius: 80,
+                                backgroundImage: FileImage(File(imagePath)),
+                              )
+                            : CircleAvatar(
+                                radius: 80,
+                                backgroundImage: _image != null
+                                    ? FileImage(_image)
+                                    : AssetImage('assets/avatar2.png')),
+                        Positioned(
+                          bottom: 0.0,
+                          right: 2.0,
+                          child: FloatingActionButton(
+                            child: Icon(Icons.add_a_photo),
+                            onPressed: () {
+                              modalBottom(context);
+                            },
+                          ),
+                        ),
+                      ],
                     ),
-                    Positioned(
-                      bottom: 0.0,
-                      right: 2.0,
-                      child: FloatingActionButton(
-                        child: Icon(Icons.add_a_photo),
-                        onPressed: () {
-                          modalBottom(context);
-                        },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: TextFormField(
+                    controller: _nameController,
+                    initialValue: name,
+                    onFieldSubmitted: (name) async {
+                      setState(() => this.name = name);
+                      await SharedPrefs.setUsername(name);
+                    },
+                    decoration: InputDecoration(
+                      prefixIcon: Icon(Icons.person),
+                      suffixIcon: Icon(Icons.edit),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: TextFormField(
+                    controller: _fathername,
+                    initialValue: fatherName,
+                    onFieldSubmitted: (fathername) async {
+                      setState(() => this.fatherName = fathername);
+                      await SharedPrefs.setFatherName(fathername);
+                    },
+                    decoration: InputDecoration(
+                      prefixIcon: Icon(Icons.person),
+                      suffixIcon: Icon(Icons.edit),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: InkWell(
+                    onDoubleTap: () {
+                      phNum == ""
+                          ? print("enter phone num")
+                          : launch("tel://$phNum");
+                    },
+                    child: TextFormField(
+                      controller: _phnNumber,
+                      initialValue: phNum,
+                      keyboardType: TextInputType.phone,
+                      onFieldSubmitted: (phNum) async {
+                        setState(() => this.phNum = phNum);
+                        await SharedPrefs.setPhone(phNum);
+                      },
+                      decoration: InputDecoration(
+                        prefixIcon: Icon(Icons.phone),
+                        suffixIcon: Icon(Icons.edit),
                       ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextFormField(
-                controller: _nameController,
-                initialValue: name,
-                onFieldSubmitted: (name) async {
-                  setState(() => this.name = name);
-                  await SharedPrefs.setUsername(name);
-                },
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.person),
-                  suffixIcon: Icon(Icons.edit),
+                Container(
+                  width: size.width,
+                  child: Center(
+                    child: Text("Double Tap On Phone Number To Make A Call",
+                        style: TextStyle(
+                          color: Colors.grey,
+                        )),
+                  ),
                 ),
-              ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextFormField(
-                controller: _fathername,
-                initialValue: fatherName,
-                onFieldSubmitted: (fathername) async {
-                  setState(() => this.fatherName = fathername);
-                  await SharedPrefs.setFatherName(fathername);
-                },
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.person),
-                  suffixIcon: Icon(Icons.edit),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: TextFormField(
-                controller: _phnNumber,
-                initialValue: phNum,
-                keyboardType: TextInputType.phone,
-                onFieldSubmitted: (phNum) async {
-                  setState(() => this.phNum = phNum);
-                  await SharedPrefs.setPhone(phNum);
-                },
-                decoration: InputDecoration(
-                  prefixIcon: Icon(Icons.phone),
-                  suffixIcon: Icon(Icons.edit),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -204,26 +233,4 @@ print(image.toString() + "load Image form pref");
           );
         });
   }
-
-  Widget buildButton() => ButtonWidget(
-      text: 'Save',
-      onClicked: () async {
-        await SharedPrefs.setUsername(name);
-      });
-
-  Widget buildTitle({
-    @required String title,
-    @required Widget child,
-  }) =>
-      Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            title,
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-          const SizedBox(height: 8),
-          child,
-        ],
-      );
 }
